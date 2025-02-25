@@ -6,10 +6,11 @@
 //
 
 import Foundation
+import UIKit
 
 struct Story: Decodable, Identifiable {
-    let id: Int
-    let date: Date
-    let content: StoryContent
-    let author: StoryUser
+    let id: String
+    let user: StoryUser
+    let isViewed: Bool
+    let storyUnits: [StoryUnit]
 }

@@ -8,12 +8,13 @@
 import Foundation
 
 struct StoryUser: Decodable, Identifiable {
-    let id: Int
+    let id: String
     let name: String
     let profilePictureURL: String
 
     enum CodingKeys: String, CodingKey {
-        case id, name
+        case id
+        case name
         case profilePictureURL = "profile_picture_url"
     }
 }
