@@ -9,12 +9,10 @@ import Foundation
 import Combine
 import Network
 
-@MainActor
 protocol NetworkStatusMonitorProtocol {
     var isConnected: Bool { get }
 }
 
-@MainActor
 final class NetworkStatusMonitor: ObservableObject, NetworkStatusMonitorProtocol {
     @Published var isConnected: Bool = false
     
