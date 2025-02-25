@@ -11,7 +11,7 @@ import SwiftUI
 struct StoriesApp: App {
     var body: some Scene {
         WindowGroup {
-            StoriesView()
+            StoriesView(viewModel: StoriesViewModel())
         }
     }
 }
