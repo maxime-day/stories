@@ -9,4 +9,5 @@ import Foundation
 
 enum AppConstants {
     static let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+    static let timeoutDurationForImages: Duration = .seconds(3)
 }

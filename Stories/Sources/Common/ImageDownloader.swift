@@ -33,7 +33,16 @@ final class ImageDownloader {
     }
 
     private func getLocalFileURL(for url: URL) -> URL {
-        return targetDirectory.appendingPathComponent(url.lastPathComponent)
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return targetDirectory.appendingPathComponent(url.lastPathComponent)
+        }
+            
+        var lastPathComponent = url.lastPathComponent
+        if let query = components.percentEncodedQuery {
+            lastPathComponent = "\(lastPathComponent)?\(query)"
+        }
+        
+        return targetDirectory.appendingPathComponent(lastPathComponent)
     }
 
     private func downloadImage(from url: URL) async throws -> UIImage {

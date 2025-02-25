@@ -13,6 +13,10 @@ final class StoriesViewModel: ObservableObject {
     enum StoriesViewModelError: Error {
         case cancelled
         case badURL
+        case tooManyRetryAttempts
+        case internalStateError
+        case internalError
+        case noMorePagesAvailable
     }
     
     enum State {
@@ -24,53 +28,90 @@ final class StoriesViewModel: ObservableObject {
     
     @Published var stories: [StoryViewModel] = []
     @Published var state: State = .idle
+    var page: Int = 0
     
-    private let networkStatusMonitor = NetworkStatusMonitor()
-    private let networkOperationPerformer = NetworkOperationPerformer()
-    private lazy var imageDownloader = ImageDownloader(targetDirectory: AppConstants.cacheDirectory)
+    private let networkStatusMonitor: NetworkStatusMonitorProtocol = NetworkStatusMonitor()
+    private let networkOperationPerformer: NetworkOperationPerformerProtocol = NetworkOperationPerformer()
+    private lazy var imageDownloader: ImageDownloaderProtocol = ImageDownloader(targetDirectory: AppConstants.cacheDirectory)
     
     func loadStories() async throws {
-        // Fetch and decode models
-        let storiesData = [
-            Story(id: "1", user: StoryUser(id: "1", name: "mdaymard", profilePictureURL: "https://i.pravatar.cc/300?u=1"), isViewed: false, storyUnits: []),
-            Story(id: "2", user: StoryUser(id: "2", name: "other_user", profilePictureURL: "https://i.pravatar.cc/300?u=2"), isViewed: false, storyUnits: [])
-        ]
+        guard state == .idle else {
+            throw StoriesViewModelError.internalStateError
+        }
+        
+        try await loadInternal()
+    }
+    
+    func loadMore() async throws {
+        guard state != .idle else {
+            throw StoriesViewModelError.internalStateError
+        }
+        
+        page += 1
+        try await loadInternal()
+    }
+    
+    private func loadInternal(retryAttempts: Int = 0) async throws {
+        guard retryAttempts < 3 else {
+            throw StoriesViewModelError.tooManyRetryAttempts
+        }
+        
+        state = .isLoading
+        
+        let storyUsers: StoryUserPage
+        // TODO: For this technical test, I only use local decoding
+//        if networkStatusMonitor.isConnected {
+//            storyUsers = try await fetchStoryUsers(from: page) // TODO
+//        } else {
+            storyUsers = try await decodeLocalStoryUsers(from: page)
+//        }
+        
+        let storiesData = storyUsers.users.map { user in
+            Story(id: user.id,
+                  user: user,
+                  isViewed: false, // TODO: fetch from API
+                  storyUnits: [])
+        }
         
         var storiesViewModel: [StoryViewModel] = []
         
-        try await withThrowingTaskGroup(of: StoryViewModel?.self) { group in
-            for story in storiesData {
-                group.addTask { [weak self] in
-                    guard let self else {
-                        throw StoriesViewModelError.cancelled
+        do {
+            try await withThrowingTaskGroup(of: StoryViewModel?.self) { group in
+                for story in storiesData {
+                    group.addTask { [weak self] in
+                        guard let self else {
+                            throw StoriesViewModelError.cancelled
+                        }
+                        guard let pictureURL = URL(string: story.user.profilePictureURL) else {
+                            throw StoriesViewModelError.badURL
+                        }
+                        let image = try await fetchStoryImage(imageURL: pictureURL)
+                        return StoryViewModel(id: story.id, isViewed: story.isViewed, image: image, username: story.user.name)
                     }
-                    guard let pictureURL = URL(string: story.user.profilePictureURL) else {
-                        throw StoriesViewModelError.badURL
+                }
+                
+                for try await storyViewModel in group {
+                    if let storyViewModel {
+                        storiesViewModel.append(storyViewModel)
                     }
-                    let image = try await fetchStoryImage(imageURL: pictureURL)
-                    return StoryViewModel(id: story.id, isViewed: story.isViewed, image: image, username: story.user.name)
                 }
             }
             
-            for try await storyViewModel in group {
-                if let storyViewModel = storyViewModel {
-                    storiesViewModel.append(storyViewModel)
-                }
+            stories.append(contentsOf: storiesViewModel)
+            state = .isLoaded
+        } catch {
+            print("Error loading stories : \(error)")
+            if !networkStatusMonitor.isConnected {
+                state = .requiresNetwork
+            } else {
+                try await Task.sleep(for: .seconds(1))
+                try await loadInternal(retryAttempts: retryAttempts + 1)
             }
         }
-        
-        stories = storiesViewModel
-        state = .isLoaded
-    }
-
-    
-    func loadMore() async throws {
-        // IF connected, load one more page through an API
-        // If not corrected, throw an error
     }
     
     private func fetchStoryImage(imageURL: URL) async throws -> UIImage {
-        let result = try await networkOperationPerformer.invokeUponNetworkAccess(within: .seconds(5)) { [weak self] in
+        let result = try await networkOperationPerformer.invokeUponNetworkAccess(within: AppConstants.timeoutDurationForImages) { [weak self] in
             guard let self else {
                 throw StoriesViewModelError.cancelled
             }
@@ -82,6 +123,29 @@ final class StoriesViewModel: ObservableObject {
             return image
         case .failure(let error):
             throw error
+        }
+    }
+    
+//    private func fetchStoryUsers(from page: Int) async throws -> StoryUserPage {
+//        // TODO: from API
+//    }
+    
+    private func decodeLocalStoryUsers(from page: Int) async throws -> StoryUserPage {
+        guard let url = Bundle.main.url(forResource: "usersExample", withExtension: "json") else {
+            throw StoriesViewModelError.internalError
+        }
+        
+        do {
+            let data = try Data(contentsOf: url)
+            let decoder = JSONDecoder()
+            let paginatedResponse = try decoder.decode(StoryUserPaginatedResponse.self, from: data)
+            guard paginatedResponse.pages.count > page else {
+                throw StoriesViewModelError.noMorePagesAvailable
+            }
+            return paginatedResponse.pages[page]
+        } catch {
+            print("Erreur decoding JSON: \(error)")
+            throw StoriesViewModelError.internalError
         }
     }
 }

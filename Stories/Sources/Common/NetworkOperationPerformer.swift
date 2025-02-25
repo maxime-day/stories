@@ -18,7 +18,7 @@ public enum NetworkOperationExecutionError: Error {
     case timedOut
 }
 
-final class NetworkOperationPerformer {
+final class NetworkOperationPerformer: NetworkOperationPerformerProtocol {
     private let networkMonitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "NetworkOperationPerformer")
     

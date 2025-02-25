@@ -16,18 +16,28 @@ struct StoriesView: View {
     
     var body: some View {
         Group {
-            if viewModel.state == .isLoaded {
+            switch viewModel.state {
+            case .idle:
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle())
+            case .isLoading, .isLoaded:
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 15) {
+                    LazyHStack(spacing: 15) {
                         ForEach(viewModel.stories) { story in
                             StoryView(story: story)
+                                .onAppear {
+                                    if story.id == viewModel.stories.last?.id {
+                                        Task {
+                                            try await viewModel.loadMore()
+                                        }
+                                    }
+                                }
                         }
                     }
                     .padding(.horizontal)
                 }
-            } else {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle())
+            case .requiresNetwork:
+                Text("No internet connection, please try again")
             }
         }
         .onAppear {
