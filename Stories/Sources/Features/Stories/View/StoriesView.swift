@@ -8,28 +8,52 @@
 import SwiftUI
 
 struct StoriesView: View {
-    let viewModel = StoriesViewModel()
+    @ObservedObject var viewModel: StoriesViewModel
+    
+    init(viewModel: StoriesViewModel) {
+        self.viewModel = viewModel
+    }
     
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
-        .task {
-            do {
-                let image = try await viewModel.fetchStories()
-                print("got image !")
+        Group {
+            if viewModel.state == .isLoaded {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 15) {
+                        ForEach(viewModel.stories) { story in
+                            StoryView(story: story)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+            } else {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle())
             }
-            catch {
-                print("error : \(error)")
+        }
+        .onAppear {
+            Task {
+                try await viewModel.loadStories()
             }
         }
     }
 }
 
 #Preview {
-    StoriesView()
+    StoriesView(viewModel: {
+        let viewModel = StoriesViewModel()
+        viewModel.state = .isLoaded
+        
+        let story1 = StoryViewModel(id: "",
+                                    isViewed: false,
+                                    image: .dummy,
+                                    username: "M_Daymard")
+        
+        let story2 = StoryViewModel(id: "",
+                                    isViewed: true,
+                                    image: .dummy,
+                                    username: "other_user")
+        
+        viewModel.stories = [story1, story2]
+        return viewModel
+    }())
 }
